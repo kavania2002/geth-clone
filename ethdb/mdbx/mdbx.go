@@ -91,7 +91,7 @@ func (db *Database) Commit() error {
 	return nil
 }
 
-func reset(env *mdbx.Env, ) (Database, error) {
+func New(env *mdbx.Env, ) (Database, error) {
 	txn, err := env.BeginTxn(nil, 0)
 	if err != nil {
 		log.Fatal(err)
