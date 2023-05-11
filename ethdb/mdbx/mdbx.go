@@ -91,7 +91,7 @@ func (db *Database) Commit() error {
 	return nil
 }
 
-func New(env *mdbx.Env, ) (Database, error) {
+func Reset(env *mdbx.Env, ) (Database, error) {
 	txn, err := env.BeginTxn(nil, 0)
 	if err != nil {
 		log.Fatal(err)
@@ -106,7 +106,22 @@ func New(env *mdbx.Env, ) (Database, error) {
 		return Database{}, err
 	}
 
-	db := Database{fn: "Hello", tx: txn, dbi: dbi, env: env}
+	db := Database{tx: txn, dbi: dbi}
 	fmt.Println("Created!!")
 	return db, nil
+}
+
+func New(file string) Database {
+	env, err := mdbx.NewEnv()
+	if err != nil {
+		fmt.Println("Cannot Open Environment")
+	}
+	fmt.Println("Environment Created ", env, err)
+
+	err = env.Open(file, 0, 0664)	
+	if err != nil {
+		fmt.Println("Cannot Use Open function")
+	}
+	db := Database{fn: file, env: env}
+	return db
 }
