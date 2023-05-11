@@ -6,14 +6,15 @@ import (
 	// "sync"
 
 	"github.com/torquem-ch/mdbx-go/mdbx"
+	"github.com/ethereum/go-ethereum/ethdb"
 	// "github.com/ethereum/go-ethereum/metrics"
 )
 
 type Database struct {
-	fn string      // filename for reporting
-	dbi mdbx.DBI 
+	fn  string // filename for reporting
+	dbi mdbx.DBI
 	env *mdbx.Env
-	tx *mdbx.Txn
+	tx  *mdbx.Txn
 
 	// compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
 	// compReadMeter       metrics.Meter // Meter for measuring the data read during compaction
@@ -30,7 +31,7 @@ type Database struct {
 	// manualMemAllocGauge metrics.Gauge // Gauge to track the amount of memory that has been manually allocated (not a part of runtime/GC)
 
 	// quitLock sync.Mutex      // Mutex protecting the quit channel access
-	// quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
+	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
 
 	// log log.Logger // Contextual logger tracking the database path
 }
@@ -63,14 +64,14 @@ func (db *Database) Put(key []byte, value []byte) error {
 	return nil
 }
 
-func (db* Database) Delete(key []byte) error {
+func (db *Database) Delete(key []byte) error {
 	fmt.Println("Item to delete ", key)
 	value, err := db.Get(key)
 	if err != nil {
 		return err
 	}
 	err = db.tx.Del(db.dbi, key, value)
-	if (err != nil) {
+	if err != nil {
 		return err
 	}
 
@@ -78,9 +79,8 @@ func (db* Database) Delete(key []byte) error {
 	if commitError != nil {
 		return err
 	}
-	return nil	
+	return nil
 }
-
 
 func (db *Database) Commit() error {
 	_, err := db.tx.Commit()
@@ -90,12 +90,39 @@ func (db *Database) Commit() error {
 
 	return nil
 }
+func (db *Database) Close() error {
+	db.env.Close()
+	return nil
+}
 
-func Reset(env *mdbx.Env, ) (Database, error) {
+func (db *Database) Stat(property string) (string, error) {
+	return "", nil
+}
+
+func (db *Database) Compact(start []byte, limit []byte) (error) {
+	return nil
+}
+
+func (db *Database) NewBatch() ethdb.Batch {
+	return nil
+}
+
+func (db *Database) NewBatchWithSize(size int) ethdb.Batch {
+	return nil
+}
+
+func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
+	return nil
+}
+func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
+	return nil, nil
+}
+
+func Reset(env *mdbx.Env) (*Database, error) {
 	txn, err := env.BeginTxn(nil, 0)
 	if err != nil {
 		log.Fatal(err)
-		return Database{}, err
+		return nil, err
 	}
 	// defer txn.Abort()
 
@@ -103,25 +130,27 @@ func Reset(env *mdbx.Env, ) (Database, error) {
 	dbi, err := txn.OpenRoot(0)
 	if err != nil {
 		log.Fatal(err)
-		return Database{}, err
+		return nil, err
 	}
 
-	db := Database{tx: txn, dbi: dbi}
+	db := &Database{tx: txn, dbi: dbi}
 	fmt.Println("Created!!")
 	return db, nil
 }
 
-func New(file string) Database {
+func New(file string) (*Database, error) {
 	env, err := mdbx.NewEnv()
 	if err != nil {
 		fmt.Println("Cannot Open Environment")
+		return nil, nil
 	}
 	fmt.Println("Environment Created ", env, err)
 
-	err = env.Open(file, 0, 0664)	
+	err = env.Open(file, 0, 0664)
 	if err != nil {
 		fmt.Println("Cannot Use Open function")
+		return nil, err
 	}
-	db := Database{fn: file, env: env}
-	return db
+	db := &Database{fn: file, env: env, quitChan: make(chan chan error)}
+	return db, nil
 }

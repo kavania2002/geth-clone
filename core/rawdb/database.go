@@ -324,6 +324,7 @@ func NewLevelDBDatabase(file string, cache int, handles int, namespace string, r
 const (
 	dbPebble  = "pebble"
 	dbLeveldb = "leveldb"
+	dbMdbx = "mdbx"
 )
 
 // hasPreexistingDb checks the given data directory whether a database is already
@@ -345,7 +346,7 @@ func hasPreexistingDb(path string) string {
 // OpenOptions contains the options to apply when opening a database.
 // OBS: If AncientsDirectory is empty, it indicates that no freezer is to be used.
 type OpenOptions struct {
-	Type              string // "leveldb" | "pebble"
+	Type              string // "leveldb" | "pebble" | "mdbx"
 	Directory         string // the datadir
 	AncientsDirectory string // the ancients-dir
 	Namespace         string // the namespace for database relevant metrics
@@ -362,7 +363,7 @@ type OpenOptions struct {
 //	db is existent     |  from db         |  specified type (if compatible)
 func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	// Reject any unsupported database type
-	if len(o.Type) != 0 && o.Type != dbLeveldb && o.Type != dbPebble {
+	if len(o.Type) != 0 && o.Type != dbLeveldb && o.Type != dbPebble && o.Type != dbMdbx {
 		return nil, fmt.Errorf("unknown db.engine %v", o.Type)
 	}
 	// Retrieve any pre-existing database's type and use that or the requested one
@@ -382,6 +383,10 @@ func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	if o.Type == dbLeveldb || existingDb == dbLeveldb {
 		log.Info("Using leveldb as the backing database")
 		return NewLevelDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
+	}
+	if o.Type == dbMdbx || existingDb == dbMdbx {
+		log.Info("Using mdbx as the backing database")
+		return NewMdbxDBDatabase(o.Directory)
 	}
 	// No pre-existing database, no user-requested one either. Default to Pebble
 	// on supported platforms and LevelDB on anything else.
