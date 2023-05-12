@@ -3,10 +3,11 @@ package mdbx
 import (
 	"fmt"
 	"log"
+
 	// "sync"
 
-	"github.com/torquem-ch/mdbx-go/mdbx"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/torquem-ch/mdbx-go/mdbx"
 	// "github.com/ethereum/go-ethereum/metrics"
 )
 
@@ -45,6 +46,7 @@ func (db *Database) Has(key []byte) (bool, error) {
 }
 
 func (db *Database) Get(key []byte) ([]byte, error) {
+	fmt.Println("Item to Get: ", key)
 	value, err := db.tx.Get(db.dbi, key)
 	if err != nil {
 		return []byte(""), err
@@ -57,10 +59,10 @@ func (db *Database) Put(key []byte, value []byte) error {
 	if err != nil {
 		return err
 	}
-	commitError := db.Commit()
-	if commitError != nil {
-		return err
-	}
+	// commitError := db.Commit()
+	// if commitError != nil {
+	// return err
+	// }
 	return nil
 }
 
@@ -75,10 +77,10 @@ func (db *Database) Delete(key []byte) error {
 		return err
 	}
 
-	commitError := db.Commit()
-	if commitError != nil {
-		return err
-	}
+	// commitError := db.Commit()
+	// if commitError != nil {
+	// return err
+	// }
 	return nil
 }
 
@@ -99,7 +101,7 @@ func (db *Database) Stat(property string) (string, error) {
 	return "", nil
 }
 
-func (db *Database) Compact(start []byte, limit []byte) (error) {
+func (db *Database) Compact(start []byte, limit []byte) error {
 	return nil
 }
 
@@ -145,12 +147,31 @@ func New(file string) (*Database, error) {
 		return nil, nil
 	}
 	fmt.Println("Environment Created ", env, err)
+	fmt.Println("File - ", file)
 
 	err = env.Open(file, 0, 0664)
 	if err != nil {
 		fmt.Println("Cannot Use Open function")
 		return nil, err
 	}
-	db := &Database{fn: file, env: env, quitChan: make(chan chan error)}
+	
+
+	txn, err := env.BeginTxn(nil, 0)
+	if err != nil {
+		log.Fatal(err)
+		return nil, err
+	}
+	// defer txn.Abort()
+
+	// Open the database within the transaction
+	dbi, err := txn.OpenRoot(0)
+	if err != nil {
+		log.Fatal(err)
+		return nil, err
+	}
+	fmt.Println("Created!!")
+
+	db := &Database{fn: file, dbi:dbi, tx: txn, env: env}
+	fmt.Println("db - ", db)
 	return db, nil
 }
