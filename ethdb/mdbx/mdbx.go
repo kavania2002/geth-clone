@@ -11,7 +11,7 @@ import (
 )
 
 type Database struct {
-	fn  string // filename for reporting
+	fn string // filename for reporting
 	// dbi mdbx.DBI
 	// tx *mdbx.Txn
 	env *mdbx.Env
@@ -39,10 +39,9 @@ type Database struct {
 type Batch struct {
 	db *Database
 
-	dataPut map[string][]byte
+	dataPut    map[string][]byte
 	dataDelete map[string]bool
 }
-
 
 func (b *Batch) Put(key []byte, value []byte) error {
 	if b.ValueSize() > 100 {
@@ -55,6 +54,7 @@ func (b *Batch) Put(key []byte, value []byte) error {
 }
 
 func (b *Batch) Delete(key []byte) error {
+	// fmt.Println('')
 	if b.ValueSize() > 100 {
 		b.Write()
 		b.Reset()
@@ -63,11 +63,11 @@ func (b *Batch) Delete(key []byte) error {
 	return nil
 }
 
-func (b* Batch) Write() error {
+func (b *Batch) Write() error {
 	fmt.Println("ITEM TO WRITE - ")
 	fmt.Println("DB - ", b.db)
 	for key, value := range b.dataPut {
-		
+
 		err := b.db.Put([]byte(key), value)
 		fmt.Println("DB PUT - ")
 		if err != nil {
@@ -76,15 +76,17 @@ func (b* Batch) Write() error {
 	}
 
 	for key, _ := range b.dataDelete {
+		fmt.Println("DB DELETE - ")
 		err := b.db.Delete([]byte(key))
 		if err != nil {
 			return err
 		}
 	}
 
+	fmt.Println("WRITE FINISHED")
+
 	return nil
 }
-
 
 func (b *Batch) Replay(ethdb.KeyValueWriter) error {
 	return nil
@@ -101,6 +103,64 @@ func (b *Batch) Reset() {
 
 func (b *Batch) ValueSize() int {
 	return len(b.dataDelete) + len(b.dataPut)
+}
+
+// ////////////////// SNAPSHOT
+type snapshot struct {
+	db  *Database
+	txn *mdbx.Txn
+}
+
+func (s *snapshot) Has(key []byte) (bool, error) {
+	fmt.Println("SNAPSHOT GET")
+
+	// err := s.db.env.View(func(txn *mdbx.Txn) error {
+	dbi, err := s.txn.OpenRoot(0)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = s.txn.Get(dbi, key)
+	if err != nil {
+		return false, nil
+	}
+
+	fmt.Println("HAS FINISHED")
+
+	return true, nil
+	// })
+
+	// if err != nil {
+	// 	return false, err
+	// }
+
+	// fmt.Println("HAS FINISHED")
+
+	// return true, nil
+}
+
+func (s *snapshot) Get(key []byte) ([]byte, error) {
+	fmt.Println("SNAPSHOT GET")
+
+	var value []byte
+
+	dbi, err := s.txn.OpenRoot(0)
+	if err != nil {
+		return nil, err
+	}
+
+	value, err = s.txn.Get(dbi, key)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("GET FINISHED")
+	return value, err
+
+}
+
+func (s *snapshot) Release() {
+	s.txn.Commit()
 }
 
 func (db *Database) Has(key []byte) (bool, error) {
@@ -128,21 +188,24 @@ func (db *Database) Has(key []byte) (bool, error) {
 	// }
 
 	err := db.env.View(func(txn *mdbx.Txn) error {
+		fmt.Println("HAS INITIATED")
 		dbi, err := txn.OpenRoot(0)
 		if err != nil {
 			return err
 		}
 
+		fmt.Println("HAS VALUE HERE")
 		_, err = txn.Get(dbi, key)
 		if err != nil {
 			return err
 		}
+		fmt.Println("HAS YOHO")
 
 		return nil
 	})
 
 	if err != nil {
-		return false, err
+		return false, nil
 	}
 
 	fmt.Println("HAS FINISHED")
@@ -177,15 +240,18 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 	var value []byte
 
 	err := db.env.View(func(txn *mdbx.Txn) error {
+		fmt.Println("GET INITIATED")
 		dbi, err := txn.OpenRoot(0)
 		if err != nil {
 			return err
 		}
 
+		fmt.Println("GET VALUE HERE")
 		value, err = txn.Get(dbi, key)
 		if err != nil {
 			return err
 		}
+		fmt.Println("YOHO")
 
 		return nil
 	})
@@ -234,6 +300,11 @@ func (db *Database) Put(key []byte, value []byte) error {
 			return err
 		}
 
+		// _, commitError := txn.Commit()
+		// if commitError != nil {
+		// 	return commitError
+		// }
+
 		return nil
 	})
 
@@ -275,19 +346,29 @@ func (db *Database) Delete(key []byte) error {
 	// }
 
 	err := db.env.Update(func(txn *mdbx.Txn) error {
+		fmt.Println("DELETE INITIATED")
 		dbi, err := txn.OpenRoot(0)
 		if err != nil {
 			return err
 		}
 
-		value, err := db.Get(key)
+		fmt.Println("VALUE HERE")
+
+		value, err := txn.Get(dbi, key)
 		if err != nil {
-			return err
+			return nil
 		}
+		fmt.Println("GET GOT")
+
 		err = txn.Del(dbi, key, value)
 		if err != nil {
 			return err
 		}
+
+		// _, commitError := txn.Commit()
+		// if commitError != nil {
+		// 	return commitEraror
+		// }
 
 		return nil
 	})
@@ -297,7 +378,6 @@ func (db *Database) Delete(key []byte) error {
 	}
 
 	fmt.Println("DELETE FINISHED")
-
 
 	return nil
 }
@@ -326,16 +406,16 @@ func (db *Database) Compact(start []byte, limit []byte) error {
 
 func (db *Database) NewBatch() ethdb.Batch {
 	return &Batch{
-		db: db,
-		dataPut: make(map[string][]byte),
+		db:         db,
+		dataPut:    make(map[string][]byte),
 		dataDelete: make(map[string]bool),
 	}
 }
 
 func (db *Database) NewBatchWithSize(size int) ethdb.Batch {
 	return &Batch{
-		db: db,
-		dataPut: make(map[string][]byte),
+		db:         db,
+		dataPut:    make(map[string][]byte),
 		dataDelete: make(map[string]bool),
 	}
 }
@@ -344,7 +424,72 @@ func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	return nil
 }
 func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
-	return nil, nil
+	// destinationEnv, err := mdbx.NewEnv()
+	// if err != nil {
+	// 	fmt.Println("Cannot Open Environment")
+	// 	return nil, nil
+	// }
+	// destinationEnv.SetGeometry(-1, -1, 1024*1024*1024, -1, -1, -1)
+
+	// fmt.Println("Environment Created ", destinationEnv, err)
+
+	// var file string = "/temp"
+	// fmt.Println("File - ", )
+
+	// err = destinationEnv.Open(file, 0, 0664)
+	// if err != nil {
+	// 	fmt.Println("Cannot Use Open function")
+	// 	return nil, err
+	// }
+
+	// err = db.env.View(func(sourceTxn *mdbx.Txn) error {
+	// 	sourceDB, err := sourceTxn.OpenRoot(0)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	destinationTxn, err := destinationEnv.BeginTxn(nil, 0)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	destinationDB, err := destinationTxn.OpenRoot(0)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	// Cursor to iterate over the records in the source database
+	// 	sourceCursor := mdbx.CreateCursor()
+
+	// 	// Loop through each record in the source database and copy it to the destination database
+	// 	for {
+	// 		key, value, err := sourceCursor.Get(key, value)
+	// 		if err != nil {
+	// 			if err == mdbx.NotFound {
+	// 				break // Reached the end of the source database
+	// 			}
+	// 			return err
+	// 		}
+
+	// 		err = destinationTxn.Put(destinationDB, key, value, 0)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 	}
+
+	// 	return destinationTxn.Commit()
+	// })
+
+	tx, err := db.env.BeginTxn(nil, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &snapshot{
+		db:  db,
+		txn: tx,
+	}, nil
+	// return nil, nil
 }
 
 // func Reset(env *mdbx.Env) (*Database, error) {
@@ -383,7 +528,6 @@ func New(file string) (*Database, error) {
 		fmt.Println("Cannot Use Open function")
 		return nil, err
 	}
-	
 
 	// txn, err := env.BeginTxn(nil, 0)
 	// if err != nil {
