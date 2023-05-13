@@ -324,6 +324,7 @@ func NewLevelDBDatabase(file string, cache int, handles int, namespace string, r
 const (
 	dbPebble  = "pebble"
 	dbLeveldb = "leveldb"
+	dbbbolt = "bbolt"
 )
 
 // hasPreexistingDb checks the given data directory whether a database is already
@@ -339,7 +340,7 @@ func hasPreexistingDb(path string) string {
 		}
 		return dbPebble
 	}
-	return dbLeveldb
+	return dbbbolt
 }
 
 // OpenOptions contains the options to apply when opening a database.
@@ -362,7 +363,7 @@ type OpenOptions struct {
 //	db is existent     |  from db         |  specified type (if compatible)
 func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	// Reject any unsupported database type
-	if len(o.Type) != 0 && o.Type != dbLeveldb && o.Type != dbPebble {
+	if len(o.Type) != 0 && o.Type != dbLeveldb && o.Type != dbPebble && o.Type != dbbbolt {
 		return nil, fmt.Errorf("unknown db.engine %v", o.Type)
 	}
 	// Retrieve any pre-existing database's type and use that or the requested one
@@ -382,6 +383,11 @@ func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	if o.Type == dbLeveldb || existingDb == dbLeveldb {
 		log.Info("Using leveldb as the backing database")
 		return NewLevelDBDatabase(o.Directory, o.Cache, o.Handles, o.Namespace, o.ReadOnly)
+	}
+
+	if o.Type == dbbbolt || existingDb == dbbbolt {
+		log.Info("Using bbolt as the backing database")
+		return NewBBoltDBDatabase(o.Directory)
 	}
 	// No pre-existing database, no user-requested one either. Default to Pebble
 	// on supported platforms and LevelDB on anything else.

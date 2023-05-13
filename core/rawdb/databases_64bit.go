@@ -21,6 +21,7 @@ package rawdb
 import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	"github.com/ethereum/go-ethereum/ethdb/bbolt"
 )
 
 // Pebble is unsuported on 32bit architecture
@@ -30,6 +31,14 @@ const PebbleEnabled = true
 // moving immutable chain segments into cold storage.
 func NewPebbleDBDatabase(file string, cache int, handles int, namespace string, readonly bool) (ethdb.Database, error) {
 	db, err := pebble.New(file, cache, handles, namespace, readonly)
+	if err != nil {
+		return nil, err
+	}
+	return NewDatabase(db), nil
+}
+
+func NewBBoltDBDatabase(file string) (ethdb.Database, error) {
+	db, err := bbolt.New(file)
 	if err != nil {
 		return nil, err
 	}
