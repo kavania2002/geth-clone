@@ -2,7 +2,6 @@ package mdbx
 
 import (
 	"fmt"
-	"log"
 
 	// "sync"
 
@@ -13,6 +12,8 @@ import (
 
 type Database struct {
 	fn  string // filename for reporting
+	// dbi mdbx.DBI
+	// tx *mdbx.Txn
 	env *mdbx.Env
 
 	// compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
@@ -44,12 +45,20 @@ type Batch struct {
 
 
 func (b *Batch) Put(key []byte, value []byte) error {
+	if b.ValueSize() > 100 {
+		b.Write()
+		b.Reset()
+	}
 	// fmt.Println("Item to PUT - ", key, value)
 	b.dataPut[string(key)] = value
 	return nil
 }
 
 func (b *Batch) Delete(key []byte) error {
+	if b.ValueSize() > 100 {
+		b.Write()
+		b.Reset()
+	}
 	b.dataDelete[string(key)] = true
 	return nil
 }
@@ -97,25 +106,43 @@ func (b *Batch) ValueSize() int {
 func (db *Database) Has(key []byte) (bool, error) {
 	fmt.Println("ITEM TO HAS ", key)
 
-	tx, err := db.env.BeginTxn(nil, 0)
+	// tx, err := db.env.BeginTxn(nil, 0)
+	// if err != nil {
+	// 	return false, err
+	// }
+
+	// // Open the database within the transaction
+	// dbi, err := tx.OpenRoot(0)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// _, err = tx.Get(dbi, key)
+	// if err != nil {
+	// 	return false, err
+	// }
+
+	// _, commitError := tx.Commit()
+	// if commitError != nil {
+	// 	return false, commitError
+	// }
+
+	err := db.env.View(func(txn *mdbx.Txn) error {
+		dbi, err := txn.OpenRoot(0)
+		if err != nil {
+			return err
+		}
+
+		_, err = txn.Get(dbi, key)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return false, err
-	}
-
-	// Open the database within the transaction
-	dbi, err := tx.OpenRoot(0)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, err = tx.Get(dbi, key)
-	if err != nil {
-		return false, err
-	}
-
-	_, commitError := tx.Commit()
-	if commitError != nil {
-		return false, commitError
 	}
 
 	fmt.Println("HAS FINISHED")
@@ -126,25 +153,45 @@ func (db *Database) Has(key []byte) (bool, error) {
 func (db *Database) Get(key []byte) ([]byte, error) {
 	fmt.Println("ITEM TO GET ", key)
 
-	tx, err := db.env.BeginTxn(nil, 0)
-	if err != nil {
-		return nil, err
-	}
+	// tx, err := db.env.BeginTxn(nil, 0)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	// Open the database within the transaction
-	dbi, err := tx.OpenRoot(0)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// // Open the database within the transaction
+	// dbi, err := tx.OpenRoot(0)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
-	value, err := tx.Get(dbi, key)
+	// value, err := tx.Get(dbi, key)
+	// if err != nil {
+	// 	return []byte(""), err
+	// }
+
+	// _, commitError := tx.Commit()
+	// if commitError != nil {
+	// 	return nil, commitError
+	// }
+
+	var value []byte
+
+	err := db.env.View(func(txn *mdbx.Txn) error {
+		dbi, err := txn.OpenRoot(0)
+		if err != nil {
+			return err
+		}
+
+		value, err = txn.Get(dbi, key)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return []byte(""), err
-	}
-
-	_, commitError := tx.Commit()
-	if commitError != nil {
-		return nil, commitError
 	}
 
 	fmt.Println("GET FINISHED")
@@ -155,25 +202,43 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 func (db *Database) Put(key []byte, value []byte) error {
 	fmt.Println("ITEM TO PUT ", key)
 
-	tx, err := db.env.BeginTxn(nil, 0)
+	// tx, err := db.env.BeginTxn(nil, 0)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// // Open the database within the transaction
+	// dbi, err := tx.OpenRoot(0)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// err = tx.Put(dbi, key, value, 0)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// _, commitError := tx.Commit()
+	// if commitError != nil {
+	// 	return commitError
+	// }
+
+	err := db.env.Update(func(txn *mdbx.Txn) error {
+		dbi, err := txn.OpenRoot(0)
+		if err != nil {
+			return err
+		}
+
+		err = txn.Put(dbi, key, value, 0)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return err
-	}
-
-	// Open the database within the transaction
-	dbi, err := tx.OpenRoot(0)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = tx.Put(dbi, key, value, 0)
-	if err != nil {
-		return err
-	}
-
-	_, commitError := tx.Commit()
-	if commitError != nil {
-		return commitError
 	}
 
 	fmt.Println("PUT FINISHED")
@@ -184,29 +249,51 @@ func (db *Database) Put(key []byte, value []byte) error {
 func (db *Database) Delete(key []byte) error {
 	fmt.Println("ITEM TO DELETE ", key)
 
-	tx, err := db.env.BeginTxn(nil, 0)
+	// tx, err := db.env.BeginTxn(nil, 0)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// // Open the database within the transaction
+	// dbi, err := tx.OpenRoot(0)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// value, err := db.Get(key)
+	// if err != nil {
+	// 	return err
+	// }
+	// err = tx.Del(dbi, key, value)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// _, commitError := tx.Commit()
+	// if commitError != nil {
+	// 	return commitError
+	// }
+
+	err := db.env.Update(func(txn *mdbx.Txn) error {
+		dbi, err := txn.OpenRoot(0)
+		if err != nil {
+			return err
+		}
+
+		value, err := db.Get(key)
+		if err != nil {
+			return err
+		}
+		err = txn.Del(dbi, key, value)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return err
-	}
-
-	// Open the database within the transaction
-	dbi, err := tx.OpenRoot(0)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	value, err := db.Get(key)
-	if err != nil {
-		return err
-	}
-	err = tx.Del(dbi, key, value)
-	if err != nil {
-		return err
-	}
-
-	_, commitError := tx.Commit()
-	if commitError != nil {
-		return commitError
 	}
 
 	fmt.Println("DELETE FINISHED")
@@ -286,6 +373,8 @@ func New(file string) (*Database, error) {
 		fmt.Println("Cannot Open Environment")
 		return nil, nil
 	}
+	env.SetGeometry(-1, -1, 1024*1024*1024, -1, -1, -1)
+
 	fmt.Println("Environment Created ", env, err)
 	fmt.Println("File - ", file)
 
@@ -311,7 +400,7 @@ func New(file string) (*Database, error) {
 	// }
 	// fmt.Println("Created!!")
 
-	// db := &Database{fn: file, dbi:dbi, tx: txn, env: env}
+	// db := &Database{fn: file, dbi: dbi, tx: txn, env: env}
 	db := &Database{fn: file, env: env}
 
 	fmt.Println("db - ", db)
