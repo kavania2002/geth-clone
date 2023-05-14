@@ -331,16 +331,37 @@ const (
 // instantiated at that location, and if so, returns the type of database (or the
 // empty string).
 func hasPreexistingDb(path string) string {
-	if _, err := os.Stat(filepath.Join(path, "CURRENT")); err != nil {
-		return "" // No pre-existing db
-	}
+	// matches, err := filepath.Glob(filepath.Join(path, "mdbx.dat"))
+	// fmt.Println("mdbx ", matches, err)
+	// matches, err = filepath.Glob(filepath.Join(path, "OPTIONS*"))
+	// fmt.Println("pebble ", matches, err)
+	// fmt.Println(filepath.Glob(filepath.Join(path, "OPTIONS*")))
+	// if _, err := os.Stat(filepath.Join(path, "CURRENT")); err != nil {
+	// 	return "" // No pre-existing db
+	// }
 	if matches, err := filepath.Glob(filepath.Join(path, "OPTIONS*")); len(matches) > 0 || err != nil {
+		// fmt.Println("MATCHES PEBBLE", matches)
 		if err != nil {
 			panic(err) // only possible if the pattern is malformed
 		}
 		return dbPebble
 	}
-	return dbLeveldb
+	// fmt.Println("After pebble")
+	if matches, err := filepath.Glob(filepath.Join(path, "mdbx.dat")); len(matches) > 0 || err != nil {
+		// fmt.Println("MATCHES MDBX", matches)
+		if err != nil {
+			panic(err) // only possible if the pattern is malformed
+		}
+		return dbMdbx
+	}
+	if matches, err := filepath.Glob(filepath.Join(path, "CURRENT")); len(matches) > 0 || err != nil {
+		// fmt.Println("MATCHES PEBBLE", matches)
+		if err != nil {
+			panic(err) // only possible if the pattern is malformed
+		}
+		return dbLeveldb
+	}
+	return ""
 }
 
 // OpenOptions contains the options to apply when opening a database.
@@ -369,6 +390,7 @@ func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	// Retrieve any pre-existing database's type and use that or the requested one
 	// as long as there's no conflict between the two types
 	existingDb := hasPreexistingDb(o.Directory)
+	fmt.Println("EXISTING ", existingDb)
 	if len(existingDb) != 0 && len(o.Type) != 0 && o.Type != existingDb {
 		return nil, fmt.Errorf("db.engine choice was %v but found pre-existing %v database in specified data directory", o.Type, existingDb)
 	}
