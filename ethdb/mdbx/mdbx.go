@@ -1,6 +1,7 @@
 package mdbx
 
 import (
+	"bytes"
 	"fmt"
 
 	// "sync"
@@ -64,26 +65,26 @@ func (b *Batch) Delete(key []byte) error {
 }
 
 func (b *Batch) Write() error {
-	fmt.Println("ITEM TO WRITE - ")
-	fmt.Println("DB - ", b.db)
+	// fmt.Println("ITEM TO WRITE - ")
+	// fmt.Println("DB - ", b.db)
 	for key, value := range b.dataPut {
 
 		err := b.db.Put([]byte(key), value)
-		fmt.Println("DB PUT - ")
+		// fmt.Println("DB PUT - ")
 		if err != nil {
 			return err
 		}
 	}
 
 	for key, _ := range b.dataDelete {
-		fmt.Println("DB DELETE - ")
+		// fmt.Println("DB DELETE - ")
 		err := b.db.Delete([]byte(key))
 		if err != nil {
 			return err
 		}
 	}
 
-	fmt.Println("WRITE FINISHED")
+	// fmt.Println("WRITE FINISHED")
 
 	return nil
 }
@@ -112,7 +113,7 @@ type snapshot struct {
 }
 
 func (s *snapshot) Has(key []byte) (bool, error) {
-	fmt.Println("SNAPSHOT GET")
+	// fmt.Println("SNAPSHOT GET")
 
 	// err := s.db.env.View(func(txn *mdbx.Txn) error {
 	dbi, err := s.txn.OpenRoot(0)
@@ -125,7 +126,7 @@ func (s *snapshot) Has(key []byte) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Println("HAS FINISHED")
+	// fmt.Println("HAS FINISHED")
 
 	return true, nil
 	// })
@@ -134,13 +135,13 @@ func (s *snapshot) Has(key []byte) (bool, error) {
 	// 	return false, err
 	// }
 
-	// fmt.Println("HAS FINISHED")
+	// // fmt.Println("HAS FINISHED")
 
 	// return true, nil
 }
 
 func (s *snapshot) Get(key []byte) ([]byte, error) {
-	fmt.Println("SNAPSHOT GET")
+	// fmt.Println("SNAPSHOT GET")
 
 	var value []byte
 
@@ -154,7 +155,7 @@ func (s *snapshot) Get(key []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	fmt.Println("GET FINISHED")
+	// fmt.Println("GET FINISHED")
 	return value, err
 
 }
@@ -163,8 +164,55 @@ func (s *snapshot) Release() {
 	s.txn.Commit()
 }
 
+// ////////////////////// Iterator
+type iterator struct {
+	db     *Database
+	cur    *mdbx.Cursor
+	prefix []byte
+	start  []byte
+	length int
+}
+
+func (it *iterator) Next() bool {
+	key, _, err := it.cur.Get(nil, nil, mdbx.Next)
+	if len(key) < it.length {
+		return false
+	}
+	if !bytes.Equal(key[:it.length], it.prefix) || err != nil {
+		return false
+	}
+	return true
+}
+
+func (it *iterator) Error() error {
+	_, _, err := it.cur.Get(nil, nil, mdbx.GetCurrent)
+	return err
+}
+
+func (it *iterator) Key() []byte {
+	key, _, err := it.cur.Get(nil, nil, mdbx.GetCurrent)
+	if err != nil {
+		return nil
+	}
+	return key
+}
+
+func (it *iterator) Value() []byte {
+	_, value, err := it.cur.Get(nil, nil, mdbx.GetCurrent)
+	if err != nil {
+		return nil
+	}
+	return value
+}
+
+func (it *iterator) Release() {
+	it.cur.Close()
+}
+
+// /////////////////// NORMAL
+
 func (db *Database) Has(key []byte) (bool, error) {
-	fmt.Println("ITEM TO HAS ", key)
+	// fmt.Println("ITEM TO HAS ", key)
 
 	// tx, err := db.env.BeginTxn(nil, 0)
 	// if err != nil {
@@ -188,18 +236,18 @@ func (db *Database) Has(key []byte) (bool, error) {
 	// }
 
 	err := db.env.View(func(txn *mdbx.Txn) error {
-		fmt.Println("HAS INITIATED")
+		// fmt.Println("HAS INITIATED")
 		dbi, err := txn.OpenRoot(0)
 		if err != nil {
 			return err
 		}
 
-		fmt.Println("HAS VALUE HERE")
+		// fmt.Println("HAS VALUE HERE")
 		_, err = txn.Get(dbi, key)
 		if err != nil {
 			return err
 		}
-		fmt.Println("HAS YOHO")
+		// fmt.Println("HAS YOHO")
 
 		return nil
 	})
@@ -208,13 +256,13 @@ func (db *Database) Has(key []byte) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Println("HAS FINISHED")
+	// fmt.Println("HAS FINISHED")
 
 	return true, nil
 }
 
 func (db *Database) Get(key []byte) ([]byte, error) {
-	fmt.Println("ITEM TO GET ", key)
+	// fmt.Println("ITEM TO GET ", key)
 
 	// tx, err := db.env.BeginTxn(nil, 0)
 	// if err != nil {
@@ -240,18 +288,18 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 	var value []byte
 
 	err := db.env.View(func(txn *mdbx.Txn) error {
-		fmt.Println("GET INITIATED")
+		// fmt.Println("GET INITIATED")
 		dbi, err := txn.OpenRoot(0)
 		if err != nil {
 			return err
 		}
 
-		fmt.Println("GET VALUE HERE")
+		// fmt.Println("GET VALUE HERE")
 		value, err = txn.Get(dbi, key)
 		if err != nil {
 			return err
 		}
-		fmt.Println("YOHO")
+		// fmt.Println("YOHO")
 
 		return nil
 	})
@@ -260,13 +308,13 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 		return []byte(""), err
 	}
 
-	fmt.Println("GET FINISHED")
+	// fmt.Println("GET FINISHED")
 
 	return value, nil
 }
 
 func (db *Database) Put(key []byte, value []byte) error {
-	fmt.Println("ITEM TO PUT ", key)
+	// fmt.Println("ITEM TO PUT ", key)
 
 	// tx, err := db.env.BeginTxn(nil, 0)
 	// if err != nil {
@@ -312,13 +360,13 @@ func (db *Database) Put(key []byte, value []byte) error {
 		return err
 	}
 
-	fmt.Println("PUT FINISHED")
+	// fmt.Println("PUT FINISHED")
 
 	return nil
 }
 
 func (db *Database) Delete(key []byte) error {
-	fmt.Println("ITEM TO DELETE ", key)
+	// fmt.Println("ITEM TO DELETE ", key)
 
 	// tx, err := db.env.BeginTxn(nil, 0)
 	// if err != nil {
@@ -346,19 +394,19 @@ func (db *Database) Delete(key []byte) error {
 	// }
 
 	err := db.env.Update(func(txn *mdbx.Txn) error {
-		fmt.Println("DELETE INITIATED")
+		// fmt.Println("DELETE INITIATED")
 		dbi, err := txn.OpenRoot(0)
 		if err != nil {
 			return err
 		}
 
-		fmt.Println("VALUE HERE")
+		// fmt.Println("VALUE HERE")
 
 		value, err := txn.Get(dbi, key)
 		if err != nil {
 			return nil
 		}
-		fmt.Println("GET GOT")
+		// fmt.Println("GET GOT")
 
 		err = txn.Del(dbi, key, value)
 		if err != nil {
@@ -377,7 +425,7 @@ func (db *Database) Delete(key []byte) error {
 		return err
 	}
 
-	fmt.Println("DELETE FINISHED")
+	// fmt.Println("DELETE FINISHED")
 
 	return nil
 }
@@ -421,24 +469,61 @@ func (db *Database) NewBatchWithSize(size int) ethdb.Batch {
 }
 
 func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
-	return nil
+	it := &iterator{}
+	err := db.env.View(func(txn *mdbx.Txn) error {
+
+		dbi, err := txn.OpenRoot(0)
+		if err != nil {
+			// fmt.Println("DBI Error Occurred - ", err)
+			return nil
+		}
+
+		cur := mdbx.CreateCursor()
+		err = cur.Bind(txn, dbi)
+		if err != nil {
+			// fmt.Println("CUR Error Occurred - ", err)
+			return nil
+		}
+
+		fullString := append(prefix, start...)
+
+		_, _, err = cur.Get(fullString, nil, mdbx.SetRange)
+		if err != nil {
+			// fmt.Println("SET Error Occured - ", err)
+			return nil
+		}
+
+		it = &iterator{db: db,
+			cur:    cur,
+			prefix: prefix,
+			start:  start,
+			length: len(prefix)}
+
+		return err
+	})
+
+	if err != nil {
+		// fmt.Println("VIEW Error ", err)
+		return nil
+	}
+	return it
 }
 func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
 	// destinationEnv, err := mdbx.NewEnv()
 	// if err != nil {
-	// 	fmt.Println("Cannot Open Environment")
+	// 	// fmt.Println("Cannot Open Environment")
 	// 	return nil, nil
 	// }
 	// destinationEnv.SetGeometry(-1, -1, 1024*1024*1024, -1, -1, -1)
 
-	// fmt.Println("Environment Created ", destinationEnv, err)
+	// // fmt.Println("Environment Created ", destinationEnv, err)
 
 	// var file string = "/temp"
-	// fmt.Println("File - ", )
+	// // fmt.Println("File - ", )
 
 	// err = destinationEnv.Open(file, 0, 0664)
 	// if err != nil {
-	// 	fmt.Println("Cannot Use Open function")
+	// 	// fmt.Println("Cannot Use Open function")
 	// 	return nil, err
 	// }
 
@@ -508,14 +593,14 @@ func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
 // 	}
 
 // 	db := &Database{tx: txn, dbi: dbi}
-// 	fmt.Println("Created!!")
+// 	// fmt.Println("Created!!")
 // 	return db, nil
 // }
 
 func New(file string) (*Database, error) {
 	env, err := mdbx.NewEnv()
 	if err != nil {
-		fmt.Println("Cannot Open Environment")
+		// fmt.Println("Cannot Open Environment")
 		return nil, nil
 	}
 	env.SetGeometry(-1, -1, 1024*1024*1024, -1, -1, -1)
@@ -525,7 +610,7 @@ func New(file string) (*Database, error) {
 
 	err = env.Open(file, 0, 0664)
 	if err != nil {
-		fmt.Println("Cannot Use Open function")
+		// fmt.Println("Cannot Use Open function")
 		return nil, err
 	}
 
