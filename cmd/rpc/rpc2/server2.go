@@ -17,7 +17,7 @@ func main() {
         fmt.Println("Cannot Open Environment")
     }
 
-    err := env.Open("/home/kavania2002/.ethereum/geth/chaindata", 0, 0664)
+    err := env.Open("/media/kavania2002/VolumeE1/College Stuff/blockchain/project/devnet/gethdata/geth/chaindata", 0, 0664)
     defer env.Close()
     if err != nil {
         fmt.Println("Cannot Use Open function")
