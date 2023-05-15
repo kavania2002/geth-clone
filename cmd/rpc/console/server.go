@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -11,44 +13,28 @@ import (
 	"github.com/torquem-ch/mdbx-go/mdbx"
 )
 
-// func main() {
-// 	env, err1 := mdbx.NewEnv()
-// 	fmt.Println("Environment Created ", env, err1)
-
-// 	if err1 != nil {
-// 		fmt.Println("Cannot Open Environment")
-// 	}
-
-// 	err := env.Open("/home/digant/.ethereum/geth/chaindata", 0, 0664)
-// 	defer env.Close()
-// 	if err != nil {
-// 		fmt.Println("Cannot Use Open function")
-// 	}
-
-// 	err = env.View(func(txn *mdbx.Txn) error {
-// 		// fmt.Println("GET INITIATED")
-// 		dbi, err := txn.OpenRoot(0)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		data, err := txn.Get(dbi, []byte("LastBlock"))
-
-// 		if err != nil {
-// 			fmt.Println(err)
-// 		}
-// 		fmt.Println(common.BytesToHash(data))
-
-// 		// fmt.Println("YOHO")
-
-// 		return nil
-// 	})
-
-// 	if err != nil {
-// 		fmt.Println(err)
-// 	}
-// }
-
 func main() {
+	fmt.Printf("Hello this is the console, please write a call to interact with the database: \n")
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Print("> ")
+		text, _ := reader.ReadString('\n')
+		length := len(text)
+		if bytes.Equal([]byte(text[:length-1]), []byte("eth.getBlockHeaderByNumber(0)")) {
+			getBlockHeaderByNumber()
+		} else if length > 26 && bytes.Equal([]byte(text[:27]), []byte("eth.getBlockHeaderByNumber(")) {
+			fmt.Println("Block Doesn't Exists")
+		} else if bytes.Equal([]byte(text[:length-1]), []byte("exit")) {
+			os.Exit(0)
+		} else {
+			fmt.Println("Invalid API")
+		}
+	}
+
+}
+
+func getBlockHeaderByNumber() {
 	env, err1 := mdbx.NewEnv()
 	fmt.Println("Environment Created ", env, err1)
 
@@ -138,7 +124,7 @@ func encodeBlockNumber(number uint64) []byte {
 }
 
 // func blockBodyKey(number uint64, hash common.Hash) []byte {
-	// return append(append([]byte("r"), encodeBlockNumber(number)...), hash.Bytes()...)
+// return append(append([]byte("r"), encodeBlockNumber(number)...), hash.Bytes()...)
 // }
 func headerKey(number uint64, hash common.Hash) []byte {
 	return append(append([]byte("h"), encodeBlockNumber(number)...), hash.Bytes()...)
