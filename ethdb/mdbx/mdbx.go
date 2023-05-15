@@ -8,42 +8,20 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/torquem-ch/mdbx-go/mdbx"
-	// "github.com/ethereum/go-ethereum/metrics"
 )
 
 type Database struct {
 	fn string // filename for reporting
-	// dbi mdbx.DBI
-	// tx *mdbx.Txn
-	env *mdbx.Env
-
-	// compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
-	// compReadMeter       metrics.Meter // Meter for measuring the data read during compaction
-	// compWriteMeter      metrics.Meter // Meter for measuring the data written during compaction
-	// writeDelayNMeter    metrics.Meter // Meter for measuring the write delay number due to database compaction
-	// writeDelayMeter     metrics.Meter // Meter for measuring the write delay duration due to database compaction
-	// diskSizeGauge       metrics.Gauge // Gauge for tracking the size of all the levels in the database
-	// diskReadMeter       metrics.Meter // Meter for measuring the effective amount of data read
-	// diskWriteMeter      metrics.Meter // Meter for measuring the effective amount of data written
-	// memCompGauge        metrics.Gauge // Gauge for tracking the number of memory compaction
-	// level0CompGauge     metrics.Gauge // Gauge for tracking the number of table compaction in level0
-	// nonlevel0CompGauge  metrics.Gauge // Gauge for tracking the number of table compaction in non0 level
-	// seekCompGauge       metrics.Gauge // Gauge for tracking the number of table compaction caused by read opt
-	// manualMemAllocGauge metrics.Gauge // Gauge to track the amount of memory that has been manually allocated (not a part of runtime/GC)
-
-	// quitLock sync.Mutex      // Mutex protecting the quit channel access
-	// quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
-
-	// log log.Logger // Contextual logger tracking the database path
+	env *mdbx.Env // Environment to open the database
 }
 
 type Batch struct {
-	db *Database
-
-	dataPut    map[string][]byte
-	dataDelete map[string]bool
+	db *Database // the database instance
+	dataPut    map[string][]byte // map to store the data to be put
+	dataDelete map[string]bool // map to store the data to be deleted
 }
 
+// Put inserts the given value into the batch for later committing.
 func (b *Batch) Put(key []byte, value []byte) error {
 	if b.ValueSize() > 100 {
 		b.Write()
@@ -54,6 +32,7 @@ func (b *Batch) Put(key []byte, value []byte) error {
 	return nil
 }
 
+// Delete inserts the a key removal into the batch for later committing.
 func (b *Batch) Delete(key []byte) error {
 	// fmt.Println('')
 	if b.ValueSize() > 100 {
@@ -64,6 +43,7 @@ func (b *Batch) Delete(key []byte) error {
 	return nil
 }
 
+// Write flushes any accumulated data to disk.
 func (b *Batch) Write() error {
 	// fmt.Println("ITEM TO WRITE - ")
 	// fmt.Println("DB - ", b.db)
@@ -89,10 +69,12 @@ func (b *Batch) Write() error {
 	return nil
 }
 
+// Replay replays the batch contents.
 func (b *Batch) Replay(ethdb.KeyValueWriter) error {
 	return nil
 }
 
+// Reset resets the batch for reuse.
 func (b *Batch) Reset() {
 	for key := range b.dataPut {
 		delete(b.dataPut, key)
@@ -102,20 +84,23 @@ func (b *Batch) Reset() {
 	}
 }
 
+// ValueSize retrieves the amount of data queued up for writing.
 func (b *Batch) ValueSize() int {
 	return len(b.dataDelete) + len(b.dataPut)
 }
 
 // ////////////////// SNAPSHOT
+// snapshot wraps a mdbx snapshot for implementing the Snapshot interface.
 type snapshot struct {
-	db  *Database
-	txn *mdbx.Txn
+	db  *Database // the database instance
+	txn *mdbx.Txn // the transaction to create a snapshot
 }
 
+// Has retrieves if a key is present in the snapshot backing by a key-value
+// data store.
 func (s *snapshot) Has(key []byte) (bool, error) {
 	// fmt.Println("SNAPSHOT GET")
 
-	// err := s.db.env.View(func(txn *mdbx.Txn) error {
 	dbi, err := s.txn.OpenRoot(0)
 	if err != nil {
 		return false, err
@@ -129,17 +114,12 @@ func (s *snapshot) Has(key []byte) (bool, error) {
 	// fmt.Println("HAS FINISHED")
 
 	return true, nil
-	// })
 
-	// if err != nil {
-	// 	return false, err
-	// }
-
-	// // fmt.Println("HAS FINISHED")
-
-	// return true, nil
 }
 
+
+// Get retrieves the given key if it's present in the snapshot backing by
+// key-value data store.
 func (s *snapshot) Get(key []byte) ([]byte, error) {
 	// fmt.Println("SNAPSHOT GET")
 
@@ -160,17 +140,19 @@ func (s *snapshot) Get(key []byte) ([]byte, error) {
 
 }
 
+// Release releases associated resources. Release should always succeed and can
+// be called multiple times without causing error.
 func (s *snapshot) Release() {
 	s.txn.Commit()
 }
 
 // ////////////////////// Iterator
 type iterator struct {
-	db     *Database
-	cur    *mdbx.Cursor
-	prefix []byte
-	start  []byte
-	length int
+	db     *Database // the database instance
+	cur    *mdbx.Cursor // Cursor to hold a position
+	prefix []byte // key prefix
+	start  []byte // start key
+	length int // length of the prefix
 }
 
 func (it *iterator) Next() bool {
@@ -212,28 +194,6 @@ func (it *iterator) Release() {
 // /////////////////// NORMAL
 
 func (db *Database) Has(key []byte) (bool, error) {
-	// fmt.Println("ITEM TO HAS ", key)
-
-	// tx, err := db.env.BeginTxn(nil, 0)
-	// if err != nil {
-	// 	return false, err
-	// }
-
-	// // Open the database within the transaction
-	// dbi, err := tx.OpenRoot(0)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// _, err = tx.Get(dbi, key)
-	// if err != nil {
-	// 	return false, err
-	// }
-
-	// _, commitError := tx.Commit()
-	// if commitError != nil {
-	// 	return false, commitError
-	// }
 
 	err := db.env.View(func(txn *mdbx.Txn) error {
 		// fmt.Println("HAS INITIATED")
@@ -262,28 +222,7 @@ func (db *Database) Has(key []byte) (bool, error) {
 }
 
 func (db *Database) Get(key []byte) ([]byte, error) {
-	// fmt.Println("ITEM TO GET ", key)
 
-	// tx, err := db.env.BeginTxn(nil, 0)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// // Open the database within the transaction
-	// dbi, err := tx.OpenRoot(0)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// value, err := tx.Get(dbi, key)
-	// if err != nil {
-	// 	return []byte(""), err
-	// }
-
-	// _, commitError := tx.Commit()
-	// if commitError != nil {
-	// 	return nil, commitError
-	// }
 
 	var value []byte
 
@@ -314,28 +253,6 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 }
 
 func (db *Database) Put(key []byte, value []byte) error {
-	// fmt.Println("ITEM TO PUT ", key)
-
-	// tx, err := db.env.BeginTxn(nil, 0)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // Open the database within the transaction
-	// dbi, err := tx.OpenRoot(0)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// err = tx.Put(dbi, key, value, 0)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// _, commitError := tx.Commit()
-	// if commitError != nil {
-	// 	return commitError
-	// }
 
 	err := db.env.Update(func(txn *mdbx.Txn) error {
 		dbi, err := txn.OpenRoot(0)
@@ -366,32 +283,6 @@ func (db *Database) Put(key []byte, value []byte) error {
 }
 
 func (db *Database) Delete(key []byte) error {
-	// fmt.Println("ITEM TO DELETE ", key)
-
-	// tx, err := db.env.BeginTxn(nil, 0)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // Open the database within the transaction
-	// dbi, err := tx.OpenRoot(0)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// value, err := db.Get(key)
-	// if err != nil {
-	// 	return err
-	// }
-	// err = tx.Del(dbi, key, value)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// _, commitError := tx.Commit()
-	// if commitError != nil {
-	// 	return commitError
-	// }
 
 	err := db.env.Update(func(txn *mdbx.Txn) error {
 		// fmt.Println("DELETE INITIATED")
@@ -413,10 +304,6 @@ func (db *Database) Delete(key []byte) error {
 			return err
 		}
 
-		// _, commitError := txn.Commit()
-		// if commitError != nil {
-		// 	return commitEraror
-		// }
 
 		return nil
 	})
@@ -430,14 +317,7 @@ func (db *Database) Delete(key []byte) error {
 	return nil
 }
 
-// func (db *Database) Commit() error {
-// 	_, err := db.tx.Commit()
-// 	if err != nil {
-// 		return err
-// 	}
 
-// 	return nil
-// }
 
 func (db *Database) Close() error {
 	db.env.Close()
@@ -452,6 +332,8 @@ func (db *Database) Compact(start []byte, limit []byte) error {
 	return nil
 }
 
+// NewBatch creates a write-only key-value store that buffers changes to its host
+// database until a final write is called.
 func (db *Database) NewBatch() ethdb.Batch {
 	return &Batch{
 		db:         db,
@@ -468,6 +350,9 @@ func (db *Database) NewBatchWithSize(size int) ethdb.Batch {
 	}
 }
 
+// NewIterator creates a binary-alphabetical iterator over a subset
+// of database content with a particular key prefix, starting at a particular
+// initial key (or after, if it does not exist).
 func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	it := &iterator{}
 	err := db.env.View(func(txn *mdbx.Txn) error {
@@ -508,62 +393,13 @@ func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	}
 	return it
 }
+
+// NewSnapshot creates a database snapshot based on the current state.
+// The created snapshot will not be affected by all following mutations
+// happened on the database.
+// Note don't forget to release the snapshot once it's used up, otherwise
+// the stale data will never be cleaned up by the underlying compactor.
 func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
-	// destinationEnv, err := mdbx.NewEnv()
-	// if err != nil {
-	// 	// fmt.Println("Cannot Open Environment")
-	// 	return nil, nil
-	// }
-	// destinationEnv.SetGeometry(-1, -1, 1024*1024*1024, -1, -1, -1)
-
-	// // fmt.Println("Environment Created ", destinationEnv, err)
-
-	// var file string = "/temp"
-	// // fmt.Println("File - ", )
-
-	// err = destinationEnv.Open(file, 0, 0664)
-	// if err != nil {
-	// 	// fmt.Println("Cannot Use Open function")
-	// 	return nil, err
-	// }
-
-	// err = db.env.View(func(sourceTxn *mdbx.Txn) error {
-	// 	sourceDB, err := sourceTxn.OpenRoot(0)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	destinationTxn, err := destinationEnv.BeginTxn(nil, 0)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	destinationDB, err := destinationTxn.OpenRoot(0)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	// Cursor to iterate over the records in the source database
-	// 	sourceCursor := mdbx.CreateCursor()
-
-	// 	// Loop through each record in the source database and copy it to the destination database
-	// 	for {
-	// 		key, value, err := sourceCursor.Get(key, value)
-	// 		if err != nil {
-	// 			if err == mdbx.NotFound {
-	// 				break // Reached the end of the source database
-	// 			}
-	// 			return err
-	// 		}
-
-	// 		err = destinationTxn.Put(destinationDB, key, value, 0)
-	// 		if err != nil {
-	// 			return err
-	// 		}
-	// 	}
-
-	// 	return destinationTxn.Commit()
-	// })
 
 	tx, err := db.env.BeginTxn(nil, 0)
 	if err != nil {
@@ -577,25 +413,7 @@ func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
 	// return nil, nil
 }
 
-// func Reset(env *mdbx.Env) (*Database, error) {
-// 	txn, err := env.BeginTxn(nil, 0)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 		return nil, err
-// 	}
-// 	// defer txn.Abort()
 
-// 	// Open the database within the transaction
-// 	dbi, err := txn.OpenRoot(0)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 		return nil, err
-// 	}
-
-// 	db := &Database{tx: txn, dbi: dbi}
-// 	// fmt.Println("Created!!")
-// 	return db, nil
-// }
 
 func New(file string) (*Database, error) {
 	env, err := mdbx.NewEnv()
@@ -614,22 +432,7 @@ func New(file string) (*Database, error) {
 		return nil, err
 	}
 
-	// txn, err := env.BeginTxn(nil, 0)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// 	return nil, err
-	// }
-	// // defer txn.Abort()
-
-	// // Open the database within the transaction
-	// dbi, err := txn.OpenRoot(0)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// 	return nil, err
-	// }
-	// fmt.Println("Created!!")
-
-	// db := &Database{fn: file, dbi: dbi, tx: txn, env: env}
+	
 	db := &Database{fn: file, env: env}
 
 	fmt.Println("db - ", db)
